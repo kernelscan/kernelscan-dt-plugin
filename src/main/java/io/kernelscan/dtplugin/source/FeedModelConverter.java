@@ -39,13 +39,22 @@ public final class FeedModelConverter {
     private static final String KERNEL_PURL = "pkg:generic/linux/kernel";
     private static final String KERNEL_CPE = "cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*";
 
-    /** The one component every emitted vulnerability affects. */
+    /**
+     * The one component every emitted vulnerability affects.
+     * <p>
+     * PURL ONLY — deliberately no CPE. DT's BovModelConverter synthesizes
+     * CPE-keyed VulnerableSoftware rows from a component CPE, and a wildcard
+     * version CPE ({@code linux_kernel:*}) combined with exact-version affects
+     * entries collapses into ONE unbounded, globally-deduplicated VS row shared
+     * by every vulnerability — making every kernel component match every CVE
+     * (observed live 2026-07-05: 12,219/12,247 false matches on 5.15.102).
+     * Purl-range rows carry the same matching information safely.
+     */
     private static final Component KERNEL_COMPONENT = Component.newBuilder()
             .setBomRef(KERNEL_BOM_REF)
             .setType(Classification.CLASSIFICATION_OPERATING_SYSTEM)
             .setName("kernel")
             .setPurl(KERNEL_PURL)
-            .setCpe(KERNEL_CPE)
             .build();
 
     /**
@@ -240,9 +249,15 @@ public final class FeedModelConverter {
     private VulnerabilityAffectedVersions convertVersion(final JsonNode version) {
         final var builder = VulnerabilityAffectedVersions.newBuilder();
         final String status = version.path("status").asText("affected");
-        builder.setStatus("unaffected".equals(status)
-                ? VulnerabilityAffectedStatus.VULNERABILITY_AFFECTED_STATUS_NOT_AFFECTED
-                : VulnerabilityAffectedStatus.VULNERABILITY_AFFECTED_STATUS_AFFECTED);
+        if (!"affected".equals(status)) {
+            // Drop exact-version "unaffected" fix pins entirely: the affected
+            // ranges already encode "< fix", and DT's BovModelConverter stores
+            // ALL version entries as vulnerable=true VS rows regardless of
+            // status — an "unaffected 6.6.121" pin became a row claiming
+            // 6.6.121 IS vulnerable (observed live 2026-07-05).
+            return null;
+        }
+        builder.setStatus(VulnerabilityAffectedStatus.VULNERABILITY_AFFECTED_STATUS_AFFECTED);
         if (version.hasNonNull("version")) {
             builder.setVersion(version.get("version").asText());
             return builder.build();

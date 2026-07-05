@@ -13,6 +13,46 @@ testbed — see "Evaluation results"):
 | `vuln-analyzer/kernelscan` | Snyk/VulnDB-style per-project analyzer | **WORKING** — the production path |
 | `vuln-data-source/kernelscan` | DB-wide mirror (nvd/osv/github slot) | **BLOCKED in 5.0.2** — needs upstream fix |
 
+## Patched-apiserver experiment (2026-07-05) — data source unblocked, and what it revealed
+
+To see what the data-source path actually does once the enum guard is removed,
+we ran a **one-line apiserver patch** on the test instance
+(`kernelscan-ops/dtrack-test/apiserver-patch/`): `VulnDataSourceMirrorService`
+maps extension `kernelscan` → source `NVD` instead of the failing
+`uppercase(extensionName)`. Deployed by prepending a patch JAR to the
+apiserver classpath (`-cp 'patch/*:apiserver.jar:lib/*'`), no image rebuild.
+
+The mirror then **ran end-to-end** (12,247 BOVs, ~33 s):
+
+- **Phase 1 (NVD source enabled):** every record `skip`ped — the update policy
+  (`isUpdatableByDataSource`, `vulnSource=NVD` owned by the enabled NVD mirror)
+  correctly refused to touch NVD-owned rows. Nothing mutated. Confirms the
+  fastlane/ownership design is real and safe.
+- **Phase 2 (NVD source disabled):** all 12,247 NVD records **enriched in
+  place** with our per-branch affected ranges — 3,746 `pkg:generic/linux/kernel`
+  `VulnerableSoftware` rows linked onto the existing NVD vulnerabilities under
+  **single NVD identity, zero duplicates**. This is the enrichment goal working
+  through the data-source slot.
+
+**But re-analysis exposed two real matching bugs in *our* BOV mapping** — DT's
+`BovModelConverter` has semantics we have to respect:
+
+1. **Component CPE → catastrophic over-match.** We put a wildcard-version CPE
+   (`linux_kernel:*`) on the emitted component. DT turns that into a single
+   *unbounded, globally-deduplicated* `VulnerableSoftware` row shared across
+   every vulnerability, so every kernel component matched **12,219 / 12,247**
+   CVEs. Fix: **emit purl only, no CPE** — purl-range rows match precisely.
+2. **`unaffected` version pins stored as vulnerable.** `BovModelConverter`
+   records *every* `affects.versions[]` entry as `vulnerable=true`, ignoring
+   `status`. Our exact `unaffected: <fix>` pins (e.g. `6.6.121`) therefore
+   claimed the fixed release IS vulnerable. Fix: **emit only `affected`
+   entries** (the ranges already encode `< fix`); drop the `unaffected` pins.
+
+Both fixed in `FeedModelConverter`; re-validated below. Lesson: the analyzer
+path never touched `BovModelConverter` (it returns findings directly), so these
+were invisible until the data-source path ran — a good argument for keeping the
+analyzer as the primary integration and the data source as opt-in enrichment.
+
 ## Evaluation results (2026-07-05, m2 testbed)
 
 **Data source:** mirror run fails terminally with `Invalid source name:
