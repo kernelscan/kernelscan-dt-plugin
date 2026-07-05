@@ -31,7 +31,7 @@ import java.util.Locale;
  * land under their final identity, enrichment targets the NVD namespace
  * (README, "Identity" section).
  */
-final class FeedModelConverter {
+public final class FeedModelConverter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FeedModelConverter.class);
 
@@ -52,14 +52,50 @@ final class FeedModelConverter {
      * One BOV per CVE. Returns {@code null} for records that cannot be
      * converted (logged; the mirror run continues).
      */
-    Bom toBov(final JsonNode vuln) {
+    public Bom toBov(final JsonNode vuln) {
         final String cveId = vuln.path("id").asText(null);
         if (cveId == null || !cveId.startsWith("CVE-")) {
             LOGGER.warn("Skipping feed record without CVE id: {}", vuln.path("id").asText("?"));
             return null;
         }
         try {
-            final var vulnBuilder = Vulnerability.newBuilder()
+            final Vulnerability.Builder vulnBuilder = toVulnerabilityBuilder(vuln, cveId);
+
+            // Per-branch affected intervals -> one affects entry on the kernel
+            // component carrying every branch's ranges. Range syntax is
+            // translated to CycloneDX `vers` (open question #2 in the README:
+            // align with what the internal analyzer matches).
+            final var affectsBuilder = VulnerabilityAffects.newBuilder().setRef(KERNEL_BOM_REF);
+            for (final JsonNode affect : vuln.path("affects")) {
+                for (final JsonNode version : affect.path("versions")) {
+                    final VulnerabilityAffectedVersions converted = convertVersion(version);
+                    if (converted != null) {
+                        affectsBuilder.addVersions(converted);
+                    }
+                }
+            }
+            if (affectsBuilder.getVersionsCount() > 0) {
+                vulnBuilder.addAffects(affectsBuilder);
+            }
+
+            return Bom.newBuilder()
+                    .setSpecVersion("1.7")
+                    .addComponents(KERNEL_COMPONENT)
+                    .addVulnerabilities(vulnBuilder)
+                    .build();
+        } catch (RuntimeException e) {
+            LOGGER.warn("Failed to convert feed record {}", cveId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Metadata-only proto vulnerability (no affects) — shared by the data
+     * source's BOV assembly and the analyzer's VDR assembly. Identity: plain
+     * CVE id, source NVD.
+     */
+    public Vulnerability.Builder toVulnerabilityBuilder(final JsonNode vuln, final String cveId) {
+        final var vulnBuilder = Vulnerability.newBuilder()
                     .setId(cveId)
                     .setSource(Source.newBuilder()
                             .setName("NVD")
@@ -84,46 +120,74 @@ final class FeedModelConverter {
             if (published != null) {
                 vulnBuilder.setPublished(toTimestamp(published));
             }
-            final Instant updated = parseInstant(vuln.path("updated").asText(null));
-            if (updated != null) {
-                vulnBuilder.setUpdated(toTimestamp(updated));
-            }
+        final Instant updated = parseInstant(vuln.path("updated").asText(null));
+        if (updated != null) {
+            vulnBuilder.setUpdated(toTimestamp(updated));
+        }
 
-            // Per-branch affected intervals -> one affects entry on the kernel
-            // component carrying every branch's ranges. Range syntax is
-            // translated to CycloneDX `vers` (open question #2 in the README:
-            // align with what the internal analyzer matches).
-            final var affectsBuilder = VulnerabilityAffects.newBuilder().setRef(KERNEL_BOM_REF);
-            for (final JsonNode affect : vuln.path("affects")) {
-                for (final JsonNode version : affect.path("versions")) {
-                    final VulnerabilityAffectedVersions converted = convertVersion(version);
-                    if (converted != null) {
-                        affectsBuilder.addVersions(converted);
+        // DT convention: link back to the analyzer/source-specific page.
+        vulnBuilder.addProperties(Property.newBuilder()
+                .setName("dependency-track:vuln:reference-url")
+                .setValue("https://kernelscan.io/cve/" + cveId));
+
+        return vulnBuilder;
+    }
+
+    /**
+     * Does this feed record affect the given kernel version? Evaluates the
+     * per-branch {@code affects[].versions[]} intervals ({@code ">=X <Y"},
+     * {@code ">=X"}, {@code "<Y"}) against a dotted kernel version. Exact
+     * {@code unaffected} fix versions win over range hits.
+     */
+    public boolean affectsKernelVersion(final JsonNode vuln, final String kernelVersion) {
+        boolean affected = false;
+        for (final JsonNode affect : vuln.path("affects")) {
+            for (final JsonNode version : affect.path("versions")) {
+                final String status = version.path("status").asText("affected");
+                if (version.hasNonNull("version")) {
+                    if ("unaffected".equals(status)
+                            && kernelVersion.equals(version.get("version").asText())) {
+                        return false; // pinned to the exact fix release
                     }
+                    continue;
+                }
+                if (!"affected".equals(status) || !version.hasNonNull("range")) {
+                    continue;
+                }
+                if (rangeContains(version.get("range").asText(), kernelVersion)) {
+                    affected = true;
                 }
             }
-            if (affectsBuilder.getVersionsCount() > 0) {
-                vulnBuilder.addAffects(affectsBuilder);
-            }
-
-            // DT convention: link back to the analyzer/source-specific page.
-            vulnBuilder.addProperties(Property.newBuilder()
-                    .setName("dependency-track:vuln:reference-url")
-                    .setValue("https://kernelscan.io/cve/" + cveId));
-
-            return Bom.newBuilder()
-                    .setSpecVersion("1.7")
-                    .addComponents(KERNEL_COMPONENT)
-                    .addVulnerabilities(vulnBuilder)
-                    .build();
-        } catch (RuntimeException e) {
-            LOGGER.warn("Failed to convert feed record {}", cveId, e);
-            return null;
         }
+        return affected;
+    }
+
+    private static boolean rangeContains(final String range, final String version) {
+        for (final String bound : range.trim().split("\\s+")) {
+            if (bound.startsWith(">=")) {
+                if (compareVersions(version, bound.substring(2)) < 0) return false;
+            } else if (bound.startsWith("<")) {
+                if (compareVersions(version, bound.substring(1)) >= 0) return false;
+            }
+        }
+        return true;
+    }
+
+    /** Dotted-numeric comparison; non-numeric segments compare as 0. */
+    static int compareVersions(final String a, final String b) {
+        final String[] as = a.split("[^0-9]+"), bs = b.split("[^0-9]+");
+        for (int i = 0; i < Math.max(as.length, bs.length); i++) {
+            final long av = i < as.length && !as[i].isEmpty() ? Long.parseLong(as[i]) : 0;
+            final long bv = i < bs.length && !bs[i].isEmpty() ? Long.parseLong(bs[i]) : 0;
+            if (av != bv) {
+                return Long.compare(av, bv);
+            }
+        }
+        return 0;
     }
 
     /** {@code updated} of a feed JSON record (watermark filtering). */
-    Instant updatedOf(final JsonNode vuln) {
+    public Instant updatedOf(final JsonNode vuln) {
         return parseInstant(vuln.path("updated").asText(null));
     }
 

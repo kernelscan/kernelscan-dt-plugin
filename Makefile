@@ -8,7 +8,7 @@ JDK_IMAGE  ?= eclipse-temurin:25-jdk
 JAR        := kernelscan-dt-plugin.jar
 
 # Jars needed for compilation (globbed from the image's lib/).
-LIB_PATTERNS := plugin-api- vuln-data-source-api- cyclonedx-proto- \
+LIB_PATTERNS := plugin-api- vuln-data-source-api- vuln-analysis-api- cyclonedx-proto- \
                 protobuf-java- slf4j-api- jackson-core- jackson-databind- \
                 jackson-annotations- jspecify-
 

@@ -1,14 +1,52 @@
 # kernelscan-dt-plugin
 
-Dependency-Track **v5** plugin shipping KernelScan extensions. First extension:
-a **`vuln-data-source`** that mirrors KernelScan's kernel-CVE feed into DT's
-vulnerability database — giving DT users a **fast lane for Linux kernel CVEs**
-(KernelScan publishes ahead of NVD ~90% of the time) and **richer affected-version
-data** than NVD's kernel CPE ranges (per-branch introduced/fixed intervals from
-kernel.org / cvelistV5 enrichment).
+Dependency-Track **v5** plugin shipping KernelScan extensions — a **fast lane
+for Linux kernel CVEs** (KernelScan publishes ahead of NVD ~90% of the time)
+and **better kernel version matching** than NVD's CPE ranges (per-branch
+introduced/fixed intervals from kernel.org / cvelistV5 enrichment).
 
-A `vuln-analyzer` extension (per-project, config-aware — the Snyk/VulnDB slot)
-may join later in the same JAR; one `Plugin` can ship multiple extension factories.
+Two extensions in one JAR (evaluated live 2026-07-05, DT 5.0.2 on the m2
+testbed — see "Evaluation results"):
+
+| Extension | Slot | Status |
+|---|---|---|
+| `vuln-analyzer/kernelscan` | Snyk/VulnDB-style per-project analyzer | **WORKING** — the production path |
+| `vuln-data-source/kernelscan` | DB-wide mirror (nvd/osv/github slot) | **BLOCKED in 5.0.2** — needs upstream fix |
+
+## Evaluation results (2026-07-05, m2 testbed)
+
+**Data source:** mirror run fails terminally with `Invalid source name:
+KERNELSCAN` — `VulnDataSourceMirrorService` derives the vulnerability source
+as `uppercase(extensionName)` and requires a known `Vulnerability.Source` enum
+value. Third-party source identities aren't wired through yet (ADR-010's
+"community data sources (soon)"). Ironically the underlying
+`VulnerabilityUpdatePolicy.isUpdatableByDataSource` already implements exactly
+our fastlane semantics ("allow a non-authoritative data source to fill the gap
+until the authoritative one catches up"). **Upstream ask:** let a
+`VulnDataSourceFactory` declare its vulnerability source (or honor per-BOV
+sources). Code stays in the JAR, inert until then.
+
+**Analyzer:** full success on the Helios Virt showcase projects —
+- `ReconcileVulnAnalysisResultsActivity` honors the **per-vuln source from the
+  VDR** (and even derives NVD from a `CVE-*` id), so our `(CVE-*, NVD)`
+  identity **merged with the existing NVD records: zero duplicates, zero new
+  identities** (`VULNERABILITY` count unchanged).
+- 5.15.102: 12,247-record corpus fetched once (~26 s, then in-memory cache),
+  5,665 affecting CVEs reported in ~150 ms; findings 5,033 → **6,206** —
+  **+1,173 CVEs the NVD-CPE internal analyzer missed**, 4,492 dual-attributed
+  (`FINDINGATTRIBUTION`: kernelscan + internal).
+- Version matching happens plugin-side against the feed's per-branch intervals
+  — no DT-side `vers`-range interpretation involved (former open question #2
+  is moot for this path).
+- Fastlane record creation (CVE not yet in DT → created under NVD identity by
+  first report) is code-verified; not yet observed live because all 12,247
+  windowed feed CVEs already existed in DT's NVD mirror — it will fire when an
+  early-disclosed CVE (oss-security watcher) hits the feed before NVD.
+- Metadata enrichment of *existing* NVD records is blocked by design while the
+  NVD data source is enabled (`isUpdatableByAnalyzer`) — our richer data lands
+  only on fastlane-created records. Acceptable; revisit with upstream.
+- Idempotent re-analysis, corpus cache shared across projects (one fetch,
+  three analyses), findings stable on re-run.
 
 ## How it plugs in
 

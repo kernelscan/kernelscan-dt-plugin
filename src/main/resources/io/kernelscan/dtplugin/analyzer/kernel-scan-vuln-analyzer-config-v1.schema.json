@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kernelscan.io/schemas/kernel-scan-vuln-analyzer-config-v1.schema.json",
+  "type": "object",
+  "javaInterfaces": [
+    "org.dependencytrack.plugin.api.config.RuntimeConfig"
+  ],
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enabled",
+      "description": "Whether the KernelScan analyzer should be enabled.",
+      "existingJavaType": "boolean"
+    },
+    "feedBaseUrl": {
+      "type": "string",
+      "title": "Feed Base URL",
+      "description": "Base URL of the KernelScan feed.",
+      "default": "https://kernelscan.io/feed",
+      "minLength": 1,
+      "format": "uri"
+    },
+    "feedToken": {
+      "type": "string",
+      "title": "Feed Token",
+      "description": "KernelScan feed URL token (`kf_pub_…`). Minted per account at kernelscan.io (Account → Feed).",
+      "minLength": 1
+    },
+    "feedCacheMinutes": {
+      "type": "integer",
+      "title": "Feed Cache (minutes)",
+      "description": "How long the fetched kernel CVE corpus is cached in memory between analyses.",
+      "default": 15,
+      "minimum": 1,
+      "existingJavaType": "int"
+    }
+  },
+  "required": [
+    "enabled"
+  ]
+}
