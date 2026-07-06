@@ -34,6 +34,23 @@ DT's stock NVD analyzer matches *every* CVE for a kernel version by CPE
 Example (Debian-based appliance, kernel 5.15.102): NVD alone flags ~5,000 kernel
 CVEs; this analyzer reports the ~1,000 reachable in the running config.
 
+## In Dependency-Track
+
+With the analyzer enabled and the product VEX imported, a project's kernel CVEs
+are triaged in place — config-reachable ones actionable, config-gated ones
+auto-marked Not Affected.
+
+![KernelScan findings in a Dependency-Track project](docs/dt-audit-vulnerabilities.png)
+
+*Audit view of a Xen Dom0 appliance (kernel 6.1.86): each finding carries an
+analyzer attribution and a config-aware verdict.*
+
+![Config-mapping reasoning behind a verdict](docs/dt-config-mapping.png)
+
+*Every verdict travels with KernelScan's config-mapping justification — here the
+CVE is **Exploitable** because `CONFIG_PCIEASPM` is enabled in the running
+`.config` (confidence 1.0).*
+
 ## What to expect — two stages
 
 This plugin is **stage 1** of a two-stage integration. Knowing what each stage
