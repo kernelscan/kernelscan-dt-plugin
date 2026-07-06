@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cyclonedx.proto.v1_7.Bom;
 import org.cyclonedx.proto.v1_7.Component;
+import org.cyclonedx.proto.v1_7.Property;
 import org.cyclonedx.proto.v1_7.Vulnerability;
 import org.cyclonedx.proto.v1_7.VulnerabilityAffects;
 import org.dependencytrack.vulnanalysis.api.VulnAnalyzer;
@@ -23,7 +24,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -53,6 +56,8 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
 
     private static final String KERNEL_PURL_PREFIX = "pkg:generic/linux/kernel@";
     private static final String KERNEL_CPE_MARKER = ":o:linux:linux_kernel:";
+    /** SBOM component property (`group:name`) that pins a specific KernelScan product. */
+    private static final String BINDING_PROPERTY = "kernelscan:product";
     static final String VERSION = versionOf();
     private static final String USER_AGENT = "kernelscan-dt-plugin/" + VERSION;
 
@@ -92,28 +97,28 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
 
     @Override
     public Bom analyze(final Bom bom) throws InterruptedException {
-        // Kernel components in the BOM, by bom-ref -> version.
-        final Map<String, String> kernelVersionByRef = new LinkedHashMap<>();
+        // Kernel components in the BOM, by bom-ref.
+        final Map<String, Kernel> kernelByRef = new LinkedHashMap<>();
         for (final Component component : bom.getComponentsList()) {
             final String version = kernelVersionOf(component);
             if (version != null && component.hasBomRef()) {
-                kernelVersionByRef.put(component.getBomRef(), version);
+                kernelByRef.put(component.getBomRef(), new Kernel(version, productBindingOf(component)));
             }
         }
-        if (kernelVersionByRef.isEmpty()) {
+        if (kernelByRef.isEmpty()) {
             return Bom.newBuilder().build();
         }
 
         final Map<String, Vulnerability.Builder> vulnsById = new LinkedHashMap<>();
-        for (final Map.Entry<String, String> entry : kernelVersionByRef.entrySet()) {
+        for (final Map.Entry<String, Kernel> entry : kernelByRef.entrySet()) {
             final String bomRef = entry.getKey();
-            final String kernelVersion = entry.getValue();
+            final Kernel kernel = entry.getValue();
             try {
-                collectFindings(kernelVersion, bomRef, vulnsById);
+                collectFindings(kernel, bomRef, vulnsById);
             } catch (ApiException e) {
                 // Contain the failure: this analyzer contributes nothing for this
                 // kernel, but the project analysis (and other analyzers) proceed.
-                LOGGER.warn("KernelScan analyzer: skipping kernel {} ({})", kernelVersion, e.getMessage());
+                LOGGER.warn("KernelScan analyzer: skipping kernel {} ({})", kernel.version(), e.getMessage());
             }
         }
 
@@ -122,14 +127,20 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
         return vdr.build();
     }
 
+    /**
+     * A kernel component to analyze: its version, and an optional explicit
+     * KernelScan product binding from a {@code kernelscan:product} SBOM property.
+     */
+    private record Kernel(String version, String binding) {
+    }
+
     private void collectFindings(
-            final String kernelVersion,
+            final Kernel kernel,
             final String bomRef,
             final Map<String, Vulnerability.Builder> vulnsById) throws InterruptedException {
-        final JsonNode vex = resolveProductVex(kernelVersion);
+        final JsonNode vex = resolveProductVex(kernel);
         if (vex == null) {
-            LOGGER.warn("KernelScan analyzer: no product for kernel {}; skipping", kernelVersion);
-            return;
+            return; // selectProductId already logged the specific reason it skipped
         }
 
         int reachable = 0, gated = 0;
@@ -148,7 +159,7 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
                     .addAffects(VulnerabilityAffects.newBuilder().setRef(bomRef));
         }
         LOGGER.info("KernelScan analyzer: kernel {} -> {} config-reachable CVE(s), {} config-gated",
-                kernelVersion, reachable, gated);
+                kernel.version(), reachable, gated);
     }
 
     static String kernelVersionOf(final Component component) {
@@ -166,10 +177,20 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
         return null;
     }
 
+    /** Explicit product binding from a {@code kernelscan:product} component property, or null. */
+    static String productBindingOf(final Component component) {
+        for (final Property p : component.getPropertiesList()) {
+            if (BINDING_PROPERTY.equals(p.getName()) && !p.getValue().isBlank()) {
+                return p.getValue().trim();
+            }
+        }
+        return null;
+    }
+
     // ── product resolution + config-aware VEX fetch ──────────────────────────
 
-    private JsonNode resolveProductVex(final String kernelVersion) throws InterruptedException {
-        final String cacheKey = kernelVersion;
+    private JsonNode resolveProductVex(final Kernel kernel) throws InterruptedException {
+        final String cacheKey = kernel.binding() != null ? "b:" + kernel.binding() : "v:" + kernel.version();
         final Duration ttl = Duration.ofMinutes(config.getCacheMinutes());
         synchronized (CACHE_LOCK) {
             final CachedVex cached = CACHE.get(cacheKey);
@@ -178,7 +199,7 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
             }
         }
 
-        final String productId = findProductId(kernelVersion);
+        final String productId = selectProductId(kernel);
         if (productId == null) {
             return null;
         }
@@ -189,12 +210,43 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
         return vex;
     }
 
-    /** First product whose kernel_version matches; null if none. */
-    private String findProductId(final String kernelVersion) throws InterruptedException {
-        for (final JsonNode p : getJson("/api/products")) {
-            if (kernelVersion.equals(p.path("kernel_version").asText())) {
-                return p.path("id").asText(null);
+    /**
+     * Resolves the KernelScan product for a kernel component, logging why it
+     * skips. With a {@code kernelscan:product} binding, matches a product by
+     * id or exact name. Without one, matches by kernel version — and if several
+     * products share the version, skips (warns) rather than guess the wrong
+     * {@code .config}.
+     */
+    private String selectProductId(final Kernel kernel) throws InterruptedException {
+        final JsonNode products = getJson("/api/products");
+
+        if (kernel.binding() != null) {
+            for (final JsonNode p : products) {
+                if (kernel.binding().equals(p.path("id").asText())
+                        || kernel.binding().equals(p.path("name").asText())) {
+                    return p.path("id").asText(null);
+                }
             }
+            LOGGER.warn("KernelScan analyzer: no product matches binding '{}' (kernel {}); skipping",
+                    kernel.binding(), kernel.version());
+            return null;
+        }
+
+        final List<JsonNode> matches = new ArrayList<>();
+        for (final JsonNode p : products) {
+            if (kernel.version().equals(p.path("kernel_version").asText())) {
+                matches.add(p);
+            }
+        }
+        if (matches.size() == 1) {
+            return matches.get(0).path("id").asText(null);
+        }
+        if (matches.isEmpty()) {
+            LOGGER.warn("KernelScan analyzer: no product for kernel {}; skipping", kernel.version());
+        } else {
+            LOGGER.warn("KernelScan analyzer: {} products share kernel {} and the component has no "
+                    + "'kernelscan:product' binding; skipping — add the binding to disambiguate",
+                    matches.size(), kernel.version());
         }
         return null;
     }

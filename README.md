@@ -98,12 +98,37 @@ Analyzers**.
 | `enabled` | `false` | turn the analyzer on |
 | `apiBaseUrl` | `https://kernelscan.io` | KernelScan API base |
 | `apiKey` | — | account API key (`ks_live_…`) — like a Snyk token |
-| `arch` | `x86_64` | disambiguates products sharing a kernel version |
 | `cacheMinutes` | `15` | in-memory TTL for a resolved product VEX |
 
-The customer's kernels must exist as **products** in their KernelScan account
-(matched by kernel version + arch); that's where the `.config` and its verdicts
-live.
+The customer's kernels must exist as **products** in their KernelScan account —
+that's where the `.config` and its verdicts live.
+
+### Which product a project maps to
+
+For each kernel component the analyzer resolves the KernelScan **product** to use:
+
+1. **By kernel version** (default) — if exactly one product has that kernel
+   version, it's used. No extra setup for the common one-product-per-version case.
+2. **By explicit binding** — if the kernel component carries a
+   `kernelscan:product` property, the analyzer uses *that* product (matched by
+   **name or id**). This is required when **two products share a kernel version
+   but have different `.config`** (e.g. a left/right appliance pair): version
+   alone can't tell them apart, so pin each one:
+
+   ```json
+   // kernel component in the SBOM
+   {
+     "type": "operating-system", "name": "linux", "version": "6.6.69",
+     "cpe": "cpe:2.3:o:linux:linux_kernel:6.6.69:*:*:*:*:*:*:*",
+     "properties": [
+       { "name": "kernelscan:product", "value": "Router-A [6.6.69]" }
+     ]
+   }
+   ```
+
+If several products share a version and the component has **no** binding, the
+analyzer **skips that kernel and logs a warning** — it will not guess and risk
+applying the wrong config's reachability verdicts.
 
 ## Build
 

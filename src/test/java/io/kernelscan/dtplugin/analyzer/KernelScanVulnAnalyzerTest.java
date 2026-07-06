@@ -42,6 +42,26 @@ class KernelScanVulnAnalyzerTest {
     }
 
     @Test
+    void productBindingReadFromProperty() {
+        final Component c = Component.newBuilder().setName("linux")
+                .setCpe("cpe:2.3:o:linux:linux_kernel:6.6.69:*:*:*:*:*:*:*")
+                .addProperties(org.cyclonedx.proto.v1_7.Property.newBuilder()
+                        .setName("kernelscan:product").setValue("Router-A [6.6.69]"))
+                .build();
+        assertEquals("Router-A [6.6.69]", KernelScanVulnAnalyzer.productBindingOf(c));
+    }
+
+    @Test
+    void noBindingWhenPropertyAbsentOrBlank() {
+        assertNull(KernelScanVulnAnalyzer.productBindingOf(
+                Component.newBuilder().setName("linux").build()));
+        assertNull(KernelScanVulnAnalyzer.productBindingOf(Component.newBuilder().setName("linux")
+                .addProperties(org.cyclonedx.proto.v1_7.Property.newBuilder()
+                        .setName("kernelscan:product").setValue("  "))
+                .build()));
+    }
+
+    @Test
     void nonKernelComponentIsIgnored() {
         assertNull(KernelScanVulnAnalyzer.kernelVersionOf(
                 cpe("cpe:2.3:a:openssl:openssl:3.0.11:*:*:*:*:*:*:*")));

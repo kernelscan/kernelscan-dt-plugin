@@ -79,7 +79,9 @@ public final class KernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory,
     public EnumSet<VulnAnalyzerRequirement> analyzerRequirements() {
         return EnumSet.of(
                 VulnAnalyzerRequirement.COMPONENT_CPE,
-                VulnAnalyzerRequirement.COMPONENT_PURL);
+                VulnAnalyzerRequirement.COMPONENT_PURL,
+                // so DT loads the optional `kernelscan:product` binding property
+                VulnAnalyzerRequirement.COMPONENT_PROPERTIES);
     }
 
     @Override
