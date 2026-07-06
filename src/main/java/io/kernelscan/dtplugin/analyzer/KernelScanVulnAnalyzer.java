@@ -30,7 +30,7 @@ import java.util.Map;
  * Config-aware Linux-kernel vulnerability analyzer.
  * <p>
  * For each kernel component in the project BOM, resolves the customer's
- * KernelScan <em>product</em> for that kernel version + architecture, fetches
+ * KernelScan <em>product</em> for that kernel version, fetches
  * its config-aware VEX, and reports the CVEs that are actually reachable in
  * that kernel's {@code .config} (VEX state != {@code not_affected}), under
  * plain {@code CVE-*} / {@code NVD} identity.
@@ -128,8 +128,7 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
             final Map<String, Vulnerability.Builder> vulnsById) throws InterruptedException {
         final JsonNode vex = resolveProductVex(kernelVersion);
         if (vex == null) {
-            LOGGER.warn("KernelScan analyzer: no product for kernel {} arch {}; skipping",
-                    kernelVersion, config.getArch());
+            LOGGER.warn("KernelScan analyzer: no product for kernel {}; skipping", kernelVersion);
             return;
         }
 
@@ -170,7 +169,7 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
     // ── product resolution + config-aware VEX fetch ──────────────────────────
 
     private JsonNode resolveProductVex(final String kernelVersion) throws InterruptedException {
-        final String cacheKey = kernelVersion + "|" + config.getArch();
+        final String cacheKey = kernelVersion;
         final Duration ttl = Duration.ofMinutes(config.getCacheMinutes());
         synchronized (CACHE_LOCK) {
             final CachedVex cached = CACHE.get(cacheKey);
@@ -190,11 +189,10 @@ final class KernelScanVulnAnalyzer implements VulnAnalyzer {
         return vex;
     }
 
-    /** First product whose kernel_version + arch match; null if none. */
+    /** First product whose kernel_version matches; null if none. */
     private String findProductId(final String kernelVersion) throws InterruptedException {
         for (final JsonNode p : getJson("/api/products")) {
-            if (kernelVersion.equals(p.path("kernel_version").asText())
-                    && config.getArch().equals(p.path("arch").asText())) {
+            if (kernelVersion.equals(p.path("kernel_version").asText())) {
                 return p.path("id").asText(null);
             }
         }

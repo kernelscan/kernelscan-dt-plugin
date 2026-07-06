@@ -23,13 +23,7 @@
     "apiKey": {
       "type": "string",
       "title": "API Key",
-      "description": "KernelScan account API key (`ks_live_…`). The analyzer resolves the product whose kernel version + architecture match the analyzed component, and reports that product's config-aware finding set."
-    },
-    "arch": {
-      "type": "string",
-      "title": "Architecture",
-      "description": "Target architecture used to disambiguate the KernelScan product when multiple products share a kernel version.",
-      "default": "x86_64"
+      "description": "KernelScan account API key (`ks_live_…`). The analyzer resolves the product matching the analyzed kernel version and reports that product's config-aware finding set."
     },
     "cacheMinutes": {
       "type": "integer",

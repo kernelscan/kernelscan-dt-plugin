@@ -55,7 +55,6 @@ public final class KernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory,
         final var defaultConfig = new KernelScanVulnAnalyzerConfigV1()
                 .withEnabled(false)
                 .withApiBaseUrl("https://kernelscan.io")
-                .withArch("x86_64")
                 .withCacheMinutes(15);
 
         return RuntimeConfigSpec.of(defaultConfig, config -> {

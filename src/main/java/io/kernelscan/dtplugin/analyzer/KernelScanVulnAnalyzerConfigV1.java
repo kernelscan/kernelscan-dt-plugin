@@ -31,9 +31,6 @@ public final class KernelScanVulnAnalyzerConfigV1 implements RuntimeConfig {
     @JsonProperty("apiKey")
     private String apiKey;
 
-    @JsonProperty("arch")
-    private String arch = "x86_64";
-
     @JsonProperty("cacheMinutes")
     private int cacheMinutes = 15;
 
@@ -47,10 +44,6 @@ public final class KernelScanVulnAnalyzerConfigV1 implements RuntimeConfig {
 
     public String getApiKey() {
         return apiKey;
-    }
-
-    public String getArch() {
-        return arch;
     }
 
     public int getCacheMinutes() {
@@ -69,11 +62,6 @@ public final class KernelScanVulnAnalyzerConfigV1 implements RuntimeConfig {
 
     public KernelScanVulnAnalyzerConfigV1 withApiKey(final String apiKey) {
         this.apiKey = apiKey;
-        return this;
-    }
-
-    public KernelScanVulnAnalyzerConfigV1 withArch(final String arch) {
-        this.arch = arch;
         return this;
     }
 
