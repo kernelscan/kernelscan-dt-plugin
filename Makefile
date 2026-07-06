@@ -57,11 +57,15 @@ test:
 	  java -jar libs/junit-console.jar execute --class-path "$$CP" \
 	      --scan-classpath build/test-classes --details=summary --disable-banner'
 
-# Dev-only: push to the m2 test instance (kernelscan-ops/dtrack-test).
+# Dev-only: copy the built JAR to a Dependency-Track test instance and reload it.
+# Set DEPLOY_HOST (ssh target) and DEPLOY_DIR (compose dir holding plugins/).
+DEPLOY_HOST ?= dt-host
+DEPLOY_DIR  ?= ~/dtrack-test
 deploy: build
-	scp build/$(JAR) mac-mini-m2:~/dtrack-test/plugins/$(JAR)
+	@test "$(DEPLOY_HOST)" != "dt-host" || { echo "set DEPLOY_HOST=<ssh-target> (and optionally DEPLOY_DIR)"; exit 1; }
+	scp build/$(JAR) $(DEPLOY_HOST):$(DEPLOY_DIR)/plugins/$(JAR)
 	@echo "restart the apiserver to load it:"
-	@echo "  ssh mac-mini-m2 'zsh -lc \"cd ~/dtrack-test && docker compose restart apiserver\"'"
+	@echo "  ssh $(DEPLOY_HOST) 'cd $(DEPLOY_DIR) && docker compose restart apiserver'"
 
 clean:
 	rm -rf build libs
