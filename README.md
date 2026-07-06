@@ -51,6 +51,16 @@ analyzer attribution and a config-aware verdict.*
 CVE is **Exploitable** because `CONFIG_PCIEASPM` is enabled in the running
 `.config` (confidence 1.0).*
 
+> **Reading the *Analyzer* column.** Findings attributed to `kernelscan` (rather
+> than DT's `internal` NVD analyzer) are KernelScan's contribution — including
+> CVEs DT's NVD matching **misses**. Example: **CVE-2024-26655** appears as a
+> `kernelscan` entry on all three appliances above because NVD's version data
+> tracks only the mainline introduction (6.7) and misses the fix's **backport to
+> the 5.15 / 6.1 / 6.6 LTS branches** — so DT's NVD analyzer never matches those
+> kernels, while KernelScan's per-branch tracking (fixed in 5.15.199 / 6.1.162 /
+> 6.6.122) correctly flags them. Each such finding also links straight to
+> `kernelscan.io/cve/<id>` for the full CVE analysis.
+
 ## What to expect — two stages
 
 This plugin is **stage 1** of a two-stage integration. Knowing what each stage
