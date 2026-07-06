@@ -44,5 +44,5 @@ other analyzers. `InterruptedException` is propagated so DT can cancel.
 
 ## Reporting a vulnerability
 
-Please report security issues privately to **security@kernelscan.io** rather than
+Please report security issues privately to **support@kernelscan.io** rather than
 opening a public issue. We aim to acknowledge within 3 business days.
