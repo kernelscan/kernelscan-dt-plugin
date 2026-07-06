@@ -34,17 +34,45 @@ DT's stock NVD analyzer matches *every* CVE for a kernel version by CPE
 Example (Debian-based appliance, kernel 5.15.102): NVD alone flags ~5,000 kernel
 CVEs; this analyzer reports the ~1,000 reachable in the running config.
 
-### The verdict half (VEX)
+## What to expect — two stages
 
-DT v5 analyzers produce **findings only** — analysis states (`not_affected` +
-justification) come exclusively from VEX imports or CEL policies, never from an
-analyzer's VDR. So to also *suppress* the config-gated CVEs that DT's NVD
-analyzer surfaces, push the same product VEX to DT (`PUT /api/v1/vex`) from an
-in-network job (analyzers receive only the BOM, not the DT project/credentials,
-so they cannot push it themselves). See `dtrack-test/push_vex.py` in the
-`kernelscan-ops` repo for a reference implementation. With both halves, a
-customer's kernel findings are fully triaged: reachable ones actionable, the
-rest auto-marked Not Affected with KernelScan's config-mapping justification.
+This plugin is **stage 1** of a two-stage integration. Knowing what each stage
+does (and deliberately does *not*) avoids surprises.
+
+### Stage 1 — the analyzer (this plugin): findings, fast
+
+- **Fast matching, including CVEs NVD lacks.** The analyzer reports the
+  config-reachable kernel CVEs — *including* ones NVD has only just published,
+  or hasn't scored yet, but KernelScan already tracks. Coverage NVD's CPE
+  matching misses appears here, attributed to `kernelscan`.
+- **No CVSS score for some of them — expected.** For a CVE where DT's NVD
+  mirror has the record but **no score** (e.g. a brand-new CVE NVD hasn't scored
+  yet, even though KernelScan has), DT shows the finding with **no score**. DT
+  treats its own NVD mirror as authoritative and will not let an analyzer fill
+  CVSS on a mirror-owned NVD record (`isUpdatableByAnalyzer("NVD") == false`).
+  The finding is still there; the score stays blank until NVD — and DT's mirror
+  — catch up. (For a CVE DT's mirror doesn't have *at all*, the analyzer creates
+  the record **with** KernelScan's score; only the "NVD stub without a score"
+  case shows blank.)
+- **No verdicts / no triage.** DT v5 analyzers produce findings only — analysis
+  states (`not_affected` + justification) come exclusively from VEX imports or
+  CEL policies, never from an analyzer's VDR. So at stage 1 nothing is
+  suppressed: every matched CVE is an active finding.
+
+So stage 1 gives you **presence and coverage** (which kernel CVEs are
+config-reachable, incl. ones NVD is behind on) — not scores or triage.
+
+### Stage 2 — the VEX: config-aware triage
+
+Upload the same product VEX to DT (`PUT /api/v1/vex`) from a small in-network
+job — analyzers receive only the BOM, not the DT project or credentials, so they
+cannot push it themselves. This applies KernelScan's config-aware `not_affected`
++ justification onto the findings from stage 1. KernelScan provides a reference
+`push_vex.py`.
+
+**Together:** a customer's kernel findings are fully triaged — the
+config-reachable ones actionable, the config-gated ones auto-marked Not Affected
+with KernelScan's config-mapping justification.
 
 ## Install
 
