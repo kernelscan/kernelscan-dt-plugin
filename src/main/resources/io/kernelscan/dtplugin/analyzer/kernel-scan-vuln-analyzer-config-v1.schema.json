@@ -12,24 +12,29 @@
       "description": "Whether the KernelScan analyzer should be enabled.",
       "existingJavaType": "boolean"
     },
-    "feedBaseUrl": {
+    "apiBaseUrl": {
       "type": "string",
-      "title": "Feed Base URL",
-      "description": "Base URL of the KernelScan feed.",
-      "default": "https://kernelscan.io/feed",
+      "title": "API Base URL",
+      "description": "Base URL of the KernelScan API.",
+      "default": "https://kernelscan.io",
       "minLength": 1,
       "format": "uri"
     },
-    "feedToken": {
+    "apiKey": {
       "type": "string",
-      "title": "Feed Token",
-      "description": "KernelScan feed URL token (`kf_pub_…`). Minted per account at kernelscan.io (Account → Feed).",
-      "minLength": 1
+      "title": "API Key",
+      "description": "KernelScan account API key (`ks_live_…`). The analyzer resolves the product whose kernel version + architecture match the analyzed component, and reports that product's config-aware finding set."
     },
-    "feedCacheMinutes": {
+    "arch": {
+      "type": "string",
+      "title": "Architecture",
+      "description": "Target architecture used to disambiguate the KernelScan product when multiple products share a kernel version.",
+      "default": "x86_64"
+    },
+    "cacheMinutes": {
       "type": "integer",
-      "title": "Feed Cache (minutes)",
-      "description": "How long the fetched kernel CVE corpus is cached in memory between analyses.",
+      "title": "Cache (minutes)",
+      "description": "How long a resolved product VEX is cached in memory between analyses.",
       "default": 15,
       "minimum": 1,
       "existingJavaType": "int"

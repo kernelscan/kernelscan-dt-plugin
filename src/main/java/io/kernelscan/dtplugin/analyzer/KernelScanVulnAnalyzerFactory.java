@@ -48,18 +48,19 @@ public final class KernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory,
     public RuntimeConfigSpec runtimeConfigSpec() {
         final var defaultConfig = new KernelScanVulnAnalyzerConfigV1()
                 .withEnabled(false)
-                .withFeedBaseUrl("https://kernelscan.io/feed")
-                .withFeedCacheMinutes(15);
+                .withApiBaseUrl("https://kernelscan.io")
+                .withArch("x86_64")
+                .withCacheMinutes(15);
 
         return RuntimeConfigSpec.of(defaultConfig, config -> {
             if (!config.isEnabled()) {
                 return;
             }
-            if (config.getFeedBaseUrl() == null || config.getFeedBaseUrl().isBlank()) {
-                throw new InvalidRuntimeConfigException("No feed base URL provided");
+            if (config.getApiBaseUrl() == null || config.getApiBaseUrl().isBlank()) {
+                throw new InvalidRuntimeConfigException("No API base URL provided");
             }
-            if (config.getFeedToken() == null || config.getFeedToken().isBlank()) {
-                throw new InvalidRuntimeConfigException("No feed token provided");
+            if (config.getApiKey() == null || config.getApiKey().isBlank()) {
+                throw new InvalidRuntimeConfigException("No API key provided");
             }
         });
     }

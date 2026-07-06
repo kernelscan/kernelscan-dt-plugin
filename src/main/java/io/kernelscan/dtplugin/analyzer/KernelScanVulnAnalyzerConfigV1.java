@@ -15,29 +15,40 @@ public final class KernelScanVulnAnalyzerConfigV1 implements RuntimeConfig {
     @JsonProperty("enabled")
     private boolean enabled;
 
-    @JsonProperty("feedBaseUrl")
-    private String feedBaseUrl;
+    // ── config-aware "product mode" (the customer setup) ─────────────────────
+    // Resolves the customer's KernelScan product for the kernel under analysis
+    // and reports its config-aware finding set (CVEs reachable in that .config).
 
-    @JsonProperty("feedToken")
-    private String feedToken;
+    @JsonProperty("apiBaseUrl")
+    private String apiBaseUrl = "https://kernelscan.io";
 
-    @JsonProperty("feedCacheMinutes")
-    private int feedCacheMinutes = 15;
+    @JsonProperty("apiKey")
+    private String apiKey;
+
+    @JsonProperty("arch")
+    private String arch = "x86_64";
+
+    @JsonProperty("cacheMinutes")
+    private int cacheMinutes = 15;
 
     public boolean isEnabled() {
         return enabled;
     }
 
-    public String getFeedBaseUrl() {
-        return feedBaseUrl;
+    public String getApiBaseUrl() {
+        return apiBaseUrl;
     }
 
-    public String getFeedToken() {
-        return feedToken;
+    public String getApiKey() {
+        return apiKey;
     }
 
-    public int getFeedCacheMinutes() {
-        return feedCacheMinutes;
+    public String getArch() {
+        return arch;
+    }
+
+    public int getCacheMinutes() {
+        return cacheMinutes;
     }
 
     public KernelScanVulnAnalyzerConfigV1 withEnabled(final boolean enabled) {
@@ -45,18 +56,23 @@ public final class KernelScanVulnAnalyzerConfigV1 implements RuntimeConfig {
         return this;
     }
 
-    public KernelScanVulnAnalyzerConfigV1 withFeedBaseUrl(final String feedBaseUrl) {
-        this.feedBaseUrl = feedBaseUrl;
+    public KernelScanVulnAnalyzerConfigV1 withApiBaseUrl(final String apiBaseUrl) {
+        this.apiBaseUrl = apiBaseUrl;
         return this;
     }
 
-    public KernelScanVulnAnalyzerConfigV1 withFeedToken(final String feedToken) {
-        this.feedToken = feedToken;
+    public KernelScanVulnAnalyzerConfigV1 withApiKey(final String apiKey) {
+        this.apiKey = apiKey;
         return this;
     }
 
-    public KernelScanVulnAnalyzerConfigV1 withFeedCacheMinutes(final int feedCacheMinutes) {
-        this.feedCacheMinutes = feedCacheMinutes;
+    public KernelScanVulnAnalyzerConfigV1 withArch(final String arch) {
+        this.arch = arch;
+        return this;
+    }
+
+    public KernelScanVulnAnalyzerConfigV1 withCacheMinutes(final int cacheMinutes) {
+        this.cacheMinutes = cacheMinutes;
         return this;
     }
 

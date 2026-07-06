@@ -13,6 +13,49 @@ testbed — see "Evaluation results"):
 | `vuln-analyzer/kernelscan` | Snyk/VulnDB-style per-project analyzer | **WORKING** — the production path |
 | `vuln-data-source/kernelscan` | DB-wide mirror (nvd/osv/github slot) | **BLOCKED in 5.0.2** — needs upstream fix |
 
+## Customer-like parallel setup (validated 2026-07-06, m2 testbed)
+
+The target live deployment: a customer SBOM identifying the kernel by **CPE**,
+DT's stock NVD analyzer running, and KernelScan layered on top for config-aware
+triage. Two KernelScan channels, because **DT v5 analyzers produce findings
+only** — analysis/verdicts are applied exclusively by the CEL policy engine or
+VEX import (`CycloneDXVexImporter`), never from an analyzer's VDR:
+
+1. **Analyzer (config-aware findings).** `vuln-analyzer/kernelscan` in *product
+   mode*: reads the kernel version from the component CPE, resolves the
+   customer's KernelScan product (by version + arch via the account API key),
+   fetches its config-aware VEX, and reports only the **config-reachable** CVEs
+   (VEX state != `not_affected`) under `(CVE-*, NVD)` identity.
+2. **VEX (config verdicts).** A companion push (`dtrack-test/push_vex.py`,
+   standing in for the customer's in-network connector/CI) `PUT /api/v1/vex`
+   with the same product VEX. DT applies the per-CVE `not_affected` +
+   justification onto the findings NVD surfaced — the config-symbol triage.
+
+Result on the three Helios projects (CPE-only kernel SBOM, NVD analyzer +
+KernelScan analyzer + config VEX):
+
+| kernel | findings (NVD, config-blind) | active after config triage | auto-suppressed `not_affected` |
+|---|---|---|---|
+| 5.15.102 | 5,230 | 1,627 | 3,603 |
+| 6.1.86 | 4,487 | 1,313 | 3,174 |
+| 6.6.69 | 3,280 | 985 | 2,295 |
+
+- Single `(CVE-*, NVD)` identity throughout (`VULNERABILITY` all source NVD, no
+  duplicates); 9,072 `NOT_AFFECTED` + 2,601 `EXPLOITABLE` analyses applied across
+  the three, each carrying KernelScan's justification (`CODE_NOT_PRESENT`, …) and
+  config-mapping detail text.
+- The analyzer alone reported the config-reachable set (5.15.102: 1,046 reachable
+  / 4,432 gated) — genuinely config-aware, not version-only.
+- VEX binds via the metadata-component path: `affects.ref` → `metadata.component`
+  makes DT apply to *all* project components vulnerable to that CVE
+  (`getAllVulnerableComponents`), so no component-identity match is needed and the
+  CPE-only SBOM works.
+
+Notes for the real deployment: the analyzer needs the customer's `ks_live_…` API
+key (config field `apiKey`); the VEX channel needs a DT API key + the same
+KernelScan key and runs inside the customer network (analyzers get only the BOM,
+not the DT project UUID / DT auth, so they cannot push the VEX themselves).
+
 ## Patched-apiserver experiment (2026-07-05) — data source unblocked, and what it revealed
 
 To see what the data-source path actually does once the enum guard is removed,
