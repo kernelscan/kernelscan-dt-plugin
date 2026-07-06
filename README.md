@@ -1,10 +1,17 @@
 # kernelscan-dt-plugin
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A **Dependency-Track v5 vulnerability analyzer** that adds config-aware Linux
 kernel CVE triage. It matches the kernel component in a project's SBOM, resolves
 the corresponding KernelScan product, and reports only the CVEs that are
 **reachable in that kernel's `.config`** — turning DT's config-blind NVD kernel
 noise into an actionable list.
+
+> Open-source client for the commercial [KernelScan](https://kernelscan.io)
+> service. It runs in-process in your DT apiserver and is **read-only outbound**:
+> it fetches verdicts from your KernelScan account and never transmits your SBOM,
+> components, or findings anywhere — see [SECURITY.md](SECURITY.md).
 
 - Registers as a first-class analyzer next to Snyk / Trivy / VulnDB (DT's plugin
   extension point) — no fork, no core changes.
@@ -107,4 +114,6 @@ src/main/resources/
 
 ## License
 
-Proprietary — KernelScan UG (haftungsbeschränkt). See `LICENSE`.
+Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Copyright © 2026 KernelScan UG (haftungsbeschränkt). The KernelScan service
+itself is commercial; this plugin is the open-source client.

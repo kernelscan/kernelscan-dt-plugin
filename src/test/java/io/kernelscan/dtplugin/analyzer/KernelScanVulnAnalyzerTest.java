@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 KernelScan UG (haftungsbeschränkt)
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package io.kernelscan.dtplugin.analyzer;
 
 import org.cyclonedx.proto.v1_7.Component;
