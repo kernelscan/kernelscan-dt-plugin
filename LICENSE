@@ -1,0 +1,10 @@
+Copyright (c) 2026 KernelScan UG (haftungsbeschränkt). All rights reserved.
+
+This software and its source code are proprietary and confidential.
+Unauthorized copying, distribution, or use of this software, via any medium,
+is strictly prohibited without the express written permission of
+KernelScan UG (haftungsbeschränkt).
+
+The software is built against OWASP Dependency-Track plugin interfaces,
+which are licensed under the Apache License 2.0 by the OWASP Foundation;
+those interfaces are used, not redistributed, by this plugin.
