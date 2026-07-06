@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Docker is preinstalled on ubuntu-latest; the Makefile extracts the DT
+      # plugin API from the pinned apiserver image and compiles/tests in a
+      # temurin:25 container — so CI is byte-for-byte the local build.
+      - name: Extract compile classpath
+        run: make libs
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernelscan-dt-plugin
+          path: build/kernelscan-dt-plugin.jar
+          if-no-files-found: error
