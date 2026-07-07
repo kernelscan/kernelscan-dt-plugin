@@ -91,11 +91,27 @@ config-reachable, incl. ones NVD is behind on) — not scores or triage.
 
 ### Stage 2 — the VEX: config-aware triage
 
-Upload the same product VEX to DT (`PUT /api/v1/vex`) from a small in-network
-job — analyzers receive only the BOM, not the DT project or credentials, so they
-cannot push it themselves. This applies KernelScan's config-aware `not_affected`
-+ justification onto the findings from stage 1. KernelScan provides a reference
-`push_vex.py`.
+A DT v5 analyzer only ever *creates findings*: it receives the BOM, not the DT
+project or its credentials, so it cannot set analysis states or push a VEX
+itself. The config-aware `not_affected` + justification verdicts therefore ride
+a second, **out-of-process** channel — the product VEX is uploaded to DT
+(`PUT /api/v1/vex`), which applies KernelScan's triage onto the stage-1 findings,
+bound by CVE id under the shared `NVD` identity.
+
+Run that channel with the companion connector,
+**[`kernelscan-dt-vex-sync`](https://github.com/kernelscan/kernelscan-dt-vex-sync)**
+(open-source, Apache-2.0). It's a small container you run *beside* DT that:
+
+- enumerates your DT projects and resolves each to its KernelScan product using
+  the **same rules as this plugin** — a `kernelscan:product` binding, else a
+  unique kernel version (see
+  [Which product a project maps to](#which-product-a-project-maps-to)) — so the
+  findings and the verdicts can never disagree about which product a project is;
+- pulls that product's config-aware VEX and `PUT /api/v1/vex`-es it on a
+  schedule, skipping unchanged VEX via `ETag` so it doesn't churn DT's audit trail;
+- authenticates with a DT API key scoped to `VIEW_PORTFOLIO` +
+  `VULNERABILITY_ANALYSIS` and your KernelScan `ks_live_…` key, both read from
+  the environment (never the command line).
 
 **Together:** a customer's kernel findings are fully triaged — the
 config-reachable ones actionable, the config-gated ones auto-marked Not Affected
