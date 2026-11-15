@@ -13,42 +13,49 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract compile classpath
-        run: make libs
+      - name: Tag matches VERSION
+        run: test "${GITHUB_REF_NAME#v}" = "$(cat VERSION)"
 
-      - name: Build
-        run: make build
+      # One JAR per supported Dependency-Track minor (Makefile DT_VERSIONS).
+      - name: Build + test all DT minors
+        run: make all-dt
 
-      - name: Test
-        run: make test
-
-      - name: Package versioned JAR
+      - name: Package versioned JARs
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          cp build/kernelscan-dt-plugin.jar "build/kernelscan-dt-plugin-${VER}.jar"
-          sha256sum "build/kernelscan-dt-plugin-${VER}.jar" | tee "build/kernelscan-dt-plugin-${VER}.jar.sha256"
+          mkdir -p dist
+          for d in build/dt*/; do
+            MINOR="$(basename "$d")"            # dt5.0, dt5.1, dt5.2
+            cp "$d/kernelscan-dt-plugin.jar" "dist/kernelscan-dt-plugin-${VER}-${MINOR}.jar"
+          done
+          (cd dist && sha256sum *.jar | tee SHA256SUMS)
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER="${GITHUB_REF_NAME#v}"
+          DTS="$(make -s dt-versions)"
           NOTES="$(cat <<EOF
-          Automated release built by CI from tag \`${GITHUB_REF_NAME}\` — Dependency-Track 5.0.2, Java 25, ${{ github.sha }}.
+          Automated release built by CI from tag \`${GITHUB_REF_NAME}\` — Java 25, ${{ github.sha }}.
 
-          **Install:** mount \`kernelscan-dt-plugin-${VER}.jar\` into the apiserver's \`lib/\`, restart, configure under Administration → Analyzers with your \`ks_live_…\` API key. See the README and SECURITY.md.
+          **Pick the JAR for your Dependency-Track minor** (built and tested against DT ${DTS}):
 
-          A \`.sha256\` checksum is attached alongside the JAR.
+          | Dependency-Track | JAR |
+          |---|---|
+          | 5.2.x | \`kernelscan-dt-plugin-${VER}-dt5.2.jar\` |
+          | 5.1.x | \`kernelscan-dt-plugin-${VER}-dt5.1.jar\` |
+          | 5.0.x | \`kernelscan-dt-plugin-${VER}-dt5.0.jar\` |
+
+          A JAR for a different minor stops the apiserver from starting, so swap the plugin whenever you upgrade DT across a minor.
+
+          **Install:** mount the JAR into the apiserver's \`lib/\`, restart, configure under Administration → Analyzers with your \`ks_live_…\` API key. See the README and SECURITY.md. Checksums are in \`SHA256SUMS\`.
           EOF
           )"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" \
-              "build/kernelscan-dt-plugin-${VER}.jar" \
-              "build/kernelscan-dt-plugin-${VER}.jar.sha256" --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" \
-              "build/kernelscan-dt-plugin-${VER}.jar" \
-              "build/kernelscan-dt-plugin-${VER}.jar.sha256" \
+            gh release create "$GITHUB_REF_NAME" dist/* \
               --title "${GITHUB_REF_NAME} — KernelScan analyzer for Dependency-Track v5" \
               --notes "$NOTES" \
               --verify-tag

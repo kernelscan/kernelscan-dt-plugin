@@ -12,24 +12,31 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with DT_VERSIONS in the Makefile.
+        dt: ["5.0.5", "5.1.2", "5.2.1"]
+    name: build (DT ${{ matrix.dt }})
     steps:
       - uses: actions/checkout@v4
 
       # Docker is preinstalled on ubuntu-latest; the Makefile extracts the DT
-      # plugin API from the pinned apiserver image and compiles/tests in a
-      # temurin:25 container — so CI is byte-for-byte the local build.
-      - name: Extract compile classpath
-        run: make libs
-
-      - name: Build
-        run: make build
-
-      - name: Test
-        run: make test
+      # plugin API from the apiserver image and compiles/tests in a temurin:25
+      # container — so CI is byte-for-byte the local build.
+      - name: Build + test
+        run: make test DT_VERSION=${{ matrix.dt }}
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kernelscan-dt-plugin
-          path: build/kernelscan-dt-plugin.jar
+          name: kernelscan-dt-plugin-dt${{ matrix.dt }}
+          path: build/dt*/kernelscan-dt-plugin.jar
           if-no-files-found: error
+
+  # Fails when the Makefile's DT_VERSIONS and the matrix above drift apart.
+  versions-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test "$(make -s dt-versions)" = "5.0.5 5.1.2 5.2.1"

@@ -8,7 +8,6 @@ package io.kernelscan.dtplugin.analyzer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.dependencytrack.plugin.api.RuntimeConfigurable;
-import org.dependencytrack.plugin.api.ServiceRegistry;
 import org.dependencytrack.plugin.api.config.ConfigRegistry;
 import org.dependencytrack.plugin.api.config.InvalidRuntimeConfigException;
 import org.dependencytrack.plugin.api.config.RuntimeConfigSpec;
@@ -26,8 +25,17 @@ import java.util.EnumSet;
  * per-vulnerability identity {@code (CVE-*, NVD)} so findings merge with
  * DT's own NVD records and fastlane records are created under their final
  * identity (reconciliation honors the VDR's per-vuln source).
+ * <p>
+ * Everything except {@code init} lives here. The DT plugin API changes
+ * {@code init}'s parameter between minors, so each supported API flavour has a
+ * tiny concrete {@code KernelScanVulnAnalyzerFactory} under
+ * {@code src/compat/<flavour>/java} that adapts it to {@link #initServices}:
+ * <ul>
+ *   <li>{@code service-registry} — DT 5.0.x / 5.1.x: {@code init(ServiceRegistry)}</li>
+ *   <li>{@code extension-context} — DT 5.2.x: {@code init(ExtensionContext)}</li>
+ * </ul>
  */
-public final class KernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory, RuntimeConfigurable {
+public abstract class AbstractKernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory, RuntimeConfigurable {
 
     private ConfigRegistry configRegistry;
     private HttpClient httpClient;
@@ -38,15 +46,20 @@ public final class KernelScanVulnAnalyzerFactory implements VulnAnalyzerFactory,
         return "kernelscan";
     }
 
+    // Part of the plugin API since DT 5.1 (no @Override: absent on 5.0).
+    public String displayName() {
+        return "KernelScan";
+    }
+
     @Override
     public Class<? extends VulnAnalyzer> extensionClass() {
         return KernelScanVulnAnalyzer.class;
     }
 
-    @Override
-    public void init(final ServiceRegistry serviceRegistry) {
-        this.configRegistry = serviceRegistry.require(ConfigRegistry.class);
-        this.httpClient = serviceRegistry.require(HttpClient.class);
+    /** Called by the per-DT-minor {@code init} adapter. */
+    protected final void initServices(final ConfigRegistry configRegistry, final HttpClient httpClient) {
+        this.configRegistry = configRegistry;
+        this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
     }
 

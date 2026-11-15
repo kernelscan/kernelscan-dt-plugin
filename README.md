@@ -119,6 +119,20 @@ with KernelScan's config-mapping justification.
 
 ## Install
 
+Each release attaches one JAR per Dependency-Track minor. Download the one
+matching your DT version (see [Compatibility](#compatibility)):
+
+| Dependency-Track | Release asset |
+|------------------|---------------|
+| 5.2.x | `kernelscan-dt-plugin-<version>-dt5.2.jar` |
+| 5.1.x | `kernelscan-dt-plugin-<version>-dt5.1.jar` |
+| 5.0.x | `kernelscan-dt-plugin-<version>-dt5.0.jar` |
+
+> **Use the JAR for your exact DT minor.** A JAR built for a different minor
+> stops the apiserver from starting (`AbstractMethodError` during plugin
+> loading). When you upgrade DT across a minor (e.g. 5.1 → 5.2), swap the
+> plugin JAR in the same step.
+
 The apiserver launches with `-cp 'dependency-track-apiserver.jar:lib/*'`, so a
 JAR mounted into `lib/` is discovered via ServiceLoader at startup.
 
@@ -179,19 +193,38 @@ The DT plugin API is not published to Maven Central, so the compile classpath is
 extracted from the pinned apiserver image. Only Docker is required.
 
 ```bash
-make libs     # extract compile classpath from ghcr.io/dependencytrack/apiserver:5.0.2
-make build    # javac + jar (in eclipse-temurin:25-jdk) -> build/kernelscan-dt-plugin.jar
-make test     # pure-logic unit tests (no network)
-make deploy   # scp to the m2 test instance (dev only)
+make all-dt                    # build + test every supported DT minor
+make build DT_VERSION=5.0.5    # one minor -> build/dt5.0/kernelscan-dt-plugin.jar
+make test  DT_VERSION=5.0.5    # pure-logic unit tests (no network)
+make deploy DT_VERSION=5.2.1 DEPLOY_HOST=<ssh-target>   # dev only
 ```
 
-`VERSION` + `DT_VERSION` are stamped into the JAR manifest. A plugin binary
-targets one DT release (`X-DependencyTrack-Version`); rebuild per DT minor.
+The compile classpath for each minor is extracted from
+`ghcr.io/dependencytrack/apiserver:<DT_VERSION>` into `libs/<DT_VERSION>/`.
+`VERSION`, `DT_VERSION` and the DT minor are stamped into the JAR manifest
+(`Implementation-Version`, `X-DependencyTrack-Version`, `X-DependencyTrack-Minor`).
 
 ## Compatibility
 
-- Dependency-Track **5.0.x** (plugin API `@since 5.0.0`, CycloneDX proto v1_7).
-- Java 25 (DT's baseline).
+| Plugin | Dependency-Track |
+|--------|------------------|
+| 0.3.x  | 5.0.x, 5.1.x, 5.2.x (one JAR per minor) |
+| 0.2.x  | 5.0.x only |
+
+The DT plugin API is not stable across minor releases: 5.1 added
+`ExtensionFactory.displayName()` and 5.2 replaced `init(ServiceRegistry)` with
+`init(ExtensionContext)`. Patch releases within a minor only add API, so the
+`-dt5.x` JAR works on every patch of that minor.
+
+The source is shared; only the factory's `init` differs. It lives in
+`src/compat/service-registry/` (DT 5.0/5.1) and `src/compat/extension-context/`
+(DT 5.2). Supporting a new DT minor means adding it to `DT_VERSIONS` in the
+`Makefile` and, if `init` changed again, a new `src/compat/` flavour.
+
+Java 25 (DT's baseline). DT 5.2's outbound connection policy
+(`dt.outbound.allowed-destinations`, default `external,private`) already allows
+`https://kernelscan.io`. If you tighten it, keep the host of your configured
+API base URL in the list.
 
 ## Layout
 
@@ -199,10 +232,12 @@ targets one DT release (`X-DependencyTrack-Version`); rebuild per DT minor.
 src/main/java/io/kernelscan/dtplugin/
   KernelScanPlugin.java                    ServiceLoader entry (registers the analyzer)
   analyzer/
-    KernelScanVulnAnalyzerFactory.java     factory + admin-UI config
+    AbstractKernelScanVulnAnalyzerFactory.java   factory + admin-UI config (shared)
     KernelScanVulnAnalyzer.java            product resolution + config-aware findings
     KernelScanVulnAnalyzerConfigV1.java    typed config
     VexModelConverter.java                 product-VEX JSON -> CycloneDX proto vuln
+src/compat/<flavour>/java/…/analyzer/
+  KernelScanVulnAnalyzerFactory.java       init() adapter per DT plugin-API flavour
 src/main/resources/
   META-INF/services/…Plugin                ServiceLoader registration
   …/kernel-scan-vuln-analyzer-config-v1.schema.json   config form schema
